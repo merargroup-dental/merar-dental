@@ -593,27 +593,31 @@ const PatientList = ({ patients, setActive, setSelectedPatient, onDelete }) => {
 const INITIAL={id:"",expediente:"",createdAt:"",status:"Nuevo",especialistaId:"",nombre:"",apellidoPaterno:"",apellidoMaterno:"",fechaNacimiento:"",edad:"",sexo:"",curp:"",telefono:"",email:"",calle:"",colonia:"",cp:"",municipio:"",estado:"",ocupacion:"",tutor:"",parentesco:"",antHeredofam:[],antPersonalesPatol:[],medicamentos:"",alergias:"",tabaco:"",alcohol:"",antEstomat:[],motivoConsulta:"",tipoMaloclusionRef:"",motivoPred:"",expectativas:"",biotipo:"",simetria:"",perfil:"",lineaMedia:"",tercioInf:"",labios:"",encias:"",atm:"",habitos:[],overjet:"",overbite:"",apinamientoSup:"",apinamientoInf:"",angleClass:"",diagnostico:"",severidad:"",tipoPlanTx:"",extraccion:"",cirugia:"",pronostico:"",duracionTx:"",anb:"",sna:"",snb:"",sistemaCefalo:"",objetivosTx:"",aparatologia:"",prescripcion:"",extraccionPlanif:"",anclaje:"",faseI:"",faseII:"",faseIII:"",costoTotal:"",formaPago:"",inicioTx:"",finTx:"",seguimientoNotas:[],pagos:[]};
 const SECS=[{id:"datos",label:"Datos",icon:"file",nom:"Art. 7.1"},{id:"antec",label:"Antecedentes",icon:"alert",nom:"Art. 7.2"},{id:"motivo",label:"Motivo",icon:"tooth",nom:"Art. 7.3"},{id:"explor",label:"Exploración",icon:"search",nom:"Art. 7.4"},{id:"diag",label:"Diagnóstico",icon:"chart",nom:"Art. 8"},{id:"plan",label:"Plan de tx",icon:"calendar",nom:"Art. 10"}];
 
+// ── Sub-components defined OUTSIDE ClinicalForm to prevent focus loss ────────
+const G2=({children})=><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>{children}</div>;
+const G3=({children})=><div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:14}}>{children}</div>;
+const Sep=({label})=><div style={{fontSize:11,fontWeight:600,color:C.muted,textTransform:"uppercase",letterSpacing:.6,marginTop:16,marginBottom:8,paddingBottom:6,borderBottom:`1px solid ${C.border}`}}>{label}</div>;
+const RadioField=({label,field,value,onChange,options})=>(
+  <div style={{display:"flex",flexDirection:"column",gap:6}}>
+    {label&&<div style={{fontSize:11,fontWeight:600,color:C.muted,textTransform:"uppercase",letterSpacing:.5}}>{label}</div>}
+    <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+      {options.map(o=><button key={o} type="button" onClick={()=>onChange(field,o)} style={{padding:"5px 12px",borderRadius:20,border:`1px solid ${value===o?C.olive:C.border}`,background:value===o?C.olive:"transparent",color:value===o?C.white:C.muted,fontSize:12,cursor:"pointer",transition:"all .15s"}}>{o}</button>)}
+    </div>
+  </div>
+);
+const ChecksField=({field,values,onChange,options})=>(
+  <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(190px,1fr))",gap:7}}>
+    {options.map(o=><label key={o} style={{display:"flex",alignItems:"center",gap:7,fontSize:13,cursor:"pointer",color:C.graphite}}><input type="checkbox" checked={(values||[]).includes(o)} onChange={()=>onChange(field,o)} style={{accentColor:C.olive,width:14,height:14}}/>{o}</label>)}
+  </div>
+);
+
 const ClinicalForm = ({ initial=null, onSave, onCancel, especialista }) => {
   const [p,setP]=useState(initial?{...initial}:{...INITIAL,id:DB.newId(),createdAt:new Date().toISOString(),expediente:`EXP-${Date.now().toString().slice(-6)}`,especialistaId:especialista.id});
   const [sec,setSec]=useState("datos"); const [saving,setSaving]=useState(false);
   const set=(f,v)=>setP(prev=>({...prev,[f]:v}));
   const toggle=(f,v)=>{const a=p[f]||[];set(f,a.includes(v)?a.filter(x=>x!==v):[...a,v]);};
-  const G2=({children})=><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>{children}</div>;
-  const G3=({children})=><div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:14}}>{children}</div>;
-  const Sep=({label})=><div style={{fontSize:11,fontWeight:600,color:C.muted,textTransform:"uppercase",letterSpacing:.6,marginTop:16,marginBottom:8,paddingBottom:6,borderBottom:`1px solid ${C.border}`}}>{label}</div>;
-  const Radio=({label,field,options})=>(
-    <div style={{display:"flex",flexDirection:"column",gap:6}}>
-      {label&&<div style={{fontSize:11,fontWeight:600,color:C.muted,textTransform:"uppercase",letterSpacing:.5}}>{label}</div>}
-      <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-        {options.map(o=><button key={o} type="button" onClick={()=>set(field,o)} style={{padding:"5px 12px",borderRadius:20,border:`1px solid ${p[field]===o?C.olive:C.border}`,background:p[field]===o?C.olive:"transparent",color:p[field]===o?C.white:C.muted,fontSize:12,cursor:"pointer",transition:"all .15s"}}>{o}</button>)}
-      </div>
-    </div>
-  );
-  const Checks=({field,options})=>(
-    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(190px,1fr))",gap:7}}>
-      {options.map(o=><label key={o} style={{display:"flex",alignItems:"center",gap:7,fontSize:13,cursor:"pointer",color:C.graphite}}><input type="checkbox" checked={(p[field]||[]).includes(o)} onChange={()=>toggle(field,o)} style={{accentColor:C.olive,width:14,height:14}}/>{o}</label>)}
-    </div>
-  );
+  const Radio=({label,field,options})=><RadioField label={label} field={field} value={p[field]} onChange={set} options={options}/>;
+  const Checks=({field,options})=><ChecksField field={field} values={p[field]} onChange={toggle} options={options}/>;
   const renderSec=()=>{
     if(sec==="datos") return <div style={{display:"flex",flexDirection:"column",gap:14}}>
       <G3><Input label="Nombre(s)" value={p.nombre} onChange={v=>set("nombre",v)} required/><Input label="Apellido paterno" value={p.apellidoPaterno} onChange={v=>set("apellidoPaterno",v)} required/><Input label="Apellido materno" value={p.apellidoMaterno} onChange={v=>set("apellidoMaterno",v)}/></G3>
