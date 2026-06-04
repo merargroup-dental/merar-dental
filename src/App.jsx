@@ -58,6 +58,7 @@ const toSnake = (p) => ({
   fase_i: p.faseI, fase_ii: p.faseII, fase_iii: p.faseIII,
   costo_total: p.costoTotal?parseFloat(p.costoTotal):null,
   forma_pago: p.formaPago, inicio_tx: p.inicioTx||null, fin_tx: p.finTx||null,
+  odontograma: p.odontograma||{},
 });
 
 const toCamel = (r, notas=[], pagos=[]) => ({
@@ -84,6 +85,7 @@ const toCamel = (r, notas=[], pagos=[]) => ({
   extraccionPlanif: r.extraccion_planif, anclaje: r.anclaje,
   faseI: r.fase_i, faseII: r.fase_ii, faseIII: r.fase_iii,
   costoTotal: r.costo_total, formaPago: r.forma_pago, inicioTx: r.inicio_tx, finTx: r.fin_tx,
+  odontograma: r.odontograma||{},
   seguimientoNotas: notas, pagos,
 });
 
@@ -590,8 +592,93 @@ const PatientList = ({ patients, setActive, setSelectedPatient, onDelete }) => {
 };
 
 // ─── CLINICAL FORM ────────────────────────────────────────────────────────────
-const INITIAL={id:"",expediente:"",createdAt:"",status:"Nuevo",especialistaId:"",nombre:"",apellidoPaterno:"",apellidoMaterno:"",fechaNacimiento:"",edad:"",sexo:"",curp:"",telefono:"",email:"",calle:"",colonia:"",cp:"",municipio:"",estado:"",ocupacion:"",tutor:"",parentesco:"",antHeredofam:[],antPersonalesPatol:[],medicamentos:"",alergias:"",tabaco:"",alcohol:"",antEstomat:[],motivoConsulta:"",tipoMaloclusionRef:"",motivoPred:"",expectativas:"",biotipo:"",simetria:"",perfil:"",lineaMedia:"",tercioInf:"",labios:"",encias:"",atm:"",habitos:[],overjet:"",overbite:"",apinamientoSup:"",apinamientoInf:"",angleClass:"",diagnostico:"",severidad:"",tipoPlanTx:"",extraccion:"",cirugia:"",pronostico:"",duracionTx:"",anb:"",sna:"",snb:"",sistemaCefalo:"",objetivosTx:"",aparatologia:"",prescripcion:"",extraccionPlanif:"",anclaje:"",faseI:"",faseII:"",faseIII:"",costoTotal:"",formaPago:"",inicioTx:"",finTx:"",seguimientoNotas:[],pagos:[]};
+const INITIAL={id:"",expediente:"",createdAt:"",status:"Nuevo",especialistaId:"",nombre:"",apellidoPaterno:"",apellidoMaterno:"",fechaNacimiento:"",edad:"",sexo:"",curp:"",telefono:"",email:"",calle:"",colonia:"",cp:"",municipio:"",estado:"",ocupacion:"",tutor:"",parentesco:"",antHeredofam:[],antPersonalesPatol:[],medicamentos:"",alergias:"",tabaco:"",alcohol:"",antEstomat:[],motivoConsulta:"",tipoMaloclusionRef:"",motivoPred:"",expectativas:"",biotipo:"",simetria:"",perfil:"",lineaMedia:"",tercioInf:"",labios:"",encias:"",atm:"",habitos:[],odontograma:{},overjet:"",overbite:"",apinamientoSup:"",apinamientoInf:"",angleClass:"",diagnostico:"",severidad:"",tipoPlanTx:"",extraccion:"",cirugia:"",pronostico:"",duracionTx:"",anb:"",sna:"",snb:"",sistemaCefalo:"",objetivosTx:"",aparatologia:"",prescripcion:"",extraccionPlanif:"",anclaje:"",faseI:"",faseII:"",faseIII:"",costoTotal:"",formaPago:"",inicioTx:"",finTx:"",seguimientoNotas:[],pagos:[]};
 const SECS=[{id:"datos",label:"Datos",icon:"file",nom:"Art. 7.1"},{id:"antec",label:"Antecedentes",icon:"alert",nom:"Art. 7.2"},{id:"motivo",label:"Motivo",icon:"tooth",nom:"Art. 7.3"},{id:"explor",label:"Exploración",icon:"search",nom:"Art. 7.4"},{id:"diag",label:"Diagnóstico",icon:"chart",nom:"Art. 8"},{id:"plan",label:"Plan de tx",icon:"calendar",nom:"Art. 10"}];
+
+// ── ODONTOGRAMA ──────────────────────────────────────────────────────────────
+const TOOTH_STATES = {
+  "": { label:"Sano", bg:C.white, border:C.border, text:C.muted },
+  "C": { label:"Caries", bg:"#FEE2E2", border:"#EF4444", text:"#EF4444" },
+  "E": { label:"Extraído", bg:"#F3F4F6", border:"#9CA3AF", text:"#9CA3AF" },
+  "Ec": { label:"A extraer", bg:"#FEF3C7", border:"#F59E0B", text:"#F59E0B" },
+  "Co": { label:"Corona", bg:"#DBEAFE", border:"#3B82F6", text:"#3B82F6" },
+  "R": { label:"Restaurado", bg:"#D1FAE5", border:"#10B981", text:"#10B981" },
+  "T": { label:"Tratado (endo)", bg:"#EDE9FE", border:"#8B5CF6", text:"#8B5CF6" },
+  "I": { label:"Implante", bg:"#FDF4FF", border:"#C026D3", text:"#C026D3" },
+};
+
+const UPPER = [[18,17,16,15,14,13,12,11],[21,22,23,24,25,26,27,28]];
+const LOWER = [[48,47,46,45,44,43,42,41],[31,32,33,34,35,36,37,38]];
+
+const Odontograma = ({ value={}, onChange }) => {
+  const [selected, setSelected] = useState(null);
+  const stateKeys = Object.keys(TOOTH_STATES);
+
+  const cycleState = (num) => {
+    const cur = value[num] || "";
+    const idx = stateKeys.indexOf(cur);
+    const next = stateKeys[(idx+1) % stateKeys.length];
+    onChange({...value, [num]: next});
+  };
+
+  const setState = (num, state) => {
+    onChange({...value, [num]: state});
+    setSelected(null);
+  };
+
+  const Tooth = ({num}) => {
+    const state = value[num] || "";
+    const st = TOOTH_STATES[state] || TOOTH_STATES[""];
+    return (
+      <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
+        <div style={{fontSize:8,color:C.muted,fontWeight:500}}>{num}</div>
+        <div onClick={()=>setSelected(selected===num?null:num)}
+          style={{width:30,height:30,borderRadius:6,border:`2px solid ${selected===num?"#1C1C1E":st.border}`,background:st.bg,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",transition:"all .15s",fontSize:9,fontWeight:700,color:st.text,boxShadow:selected===num?"0 0 0 2px #1C1C1E":st.border!==C.border?`0 0 0 1px ${st.border}40`:"none"}}>
+          {state||""}
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div style={{background:C.cream,borderRadius:12,padding:16}}>
+      {/* Legend */}
+      <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:14}}>
+        {Object.entries(TOOTH_STATES).map(([k,v])=>(
+          <span key={k} style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:10,padding:"2px 8px",borderRadius:10,background:v.bg,border:`1px solid ${v.border}`,color:v.text,fontWeight:600}}>
+            {k||"—"} {v.label}
+          </span>
+        ))}
+      </div>
+      {/* Popup selector */}
+      {selected && (
+        <div style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:10,padding:10,marginBottom:12,display:"flex",flexWrap:"wrap",gap:6,alignItems:"center"}}>
+          <span style={{fontSize:11,fontWeight:600,color:C.muted,marginRight:4}}>Diente {selected}:</span>
+          {Object.entries(TOOTH_STATES).map(([k,v])=>(
+            <button key={k} onClick={()=>setState(selected,k)} style={{padding:"4px 10px",borderRadius:8,border:`1px solid ${v.border}`,background:v.bg,color:v.text,fontSize:11,fontWeight:600,cursor:"pointer"}}>{k||"Sano"}</button>
+          ))}
+          <button onClick={()=>setSelected(null)} style={{marginLeft:"auto",padding:"4px 8px",borderRadius:8,border:`1px solid ${C.border}`,background:"transparent",color:C.muted,fontSize:11,cursor:"pointer"}}>✕</button>
+        </div>
+      )}
+      {/* Upper teeth */}
+      <div style={{fontSize:10,color:C.muted,textAlign:"center",marginBottom:6,fontWeight:500}}>SUPERIOR</div>
+      <div style={{display:"flex",justifyContent:"center",gap:3,marginBottom:4}}>
+        {UPPER[0].map(n=><Tooth key={n} num={n}/>)}
+        <div style={{width:10}}/>
+        {UPPER[1].map(n=><Tooth key={n} num={n}/>)}
+      </div>
+      <div style={{borderTop:`2px dashed ${C.border}`,margin:"8px 0"}}/>
+      {/* Lower teeth */}
+      <div style={{display:"flex",justifyContent:"center",gap:3,marginTop:4}}>
+        {LOWER[0].map(n=><Tooth key={n} num={n}/>)}
+        <div style={{width:10}}/>
+        {LOWER[1].map(n=><Tooth key={n} num={n}/>)}
+      </div>
+      <div style={{fontSize:10,color:C.muted,textAlign:"center",marginTop:6,fontWeight:500}}>INFERIOR</div>
+      <div style={{fontSize:10,color:C.muted,textAlign:"center",marginTop:8}}>Toca un diente para cambiar su estado</div>
+    </div>
+  );
+};
 
 // ── Sub-components defined OUTSIDE ClinicalForm to prevent focus loss ────────
 const G2=({children})=><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>{children}</div>;
@@ -648,6 +735,8 @@ const ClinicalForm = ({ initial=null, onSave, onCancel, especialista }) => {
       <Sep label="Tejidos blandos y ATM"/>
       <G2><Radio label="Encías" field="encias" options={["Sanas","Inflamadas","Recesión","Hiperplasia"]}/><Radio label="ATM" field="atm" options={["Sin alteración","Ruidos","Dolor","Limitación"]}/></G2>
       <Sep label="Hábitos deletéreos"/><Checks field="habitos" options={["Succión digital","Interposición labial","Interposición lingual","Onicofagia","Bruxismo","Respiración oral","Deglución atípica"]}/>
+      <Sep label="Odontograma — Sistema FDI (ISO 3950)"/>
+      <Odontograma value={p.odontograma||{}} onChange={v=>set("odontograma",v)}/>
       <Sep label="Medidas oclusales"/>
       <G3><Input label="Overjet (mm)" type="number" value={p.overjet} onChange={v=>set("overjet",v)}/><Input label="Overbite (mm)" type="number" value={p.overbite} onChange={v=>set("overbite",v)}/><Input label="Apiñamiento sup." type="number" value={p.apinamientoSup} onChange={v=>set("apinamientoSup",v)}/></G3>
       <Sep label="Clasificación de Angle"/>
