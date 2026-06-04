@@ -3,7 +3,12 @@ import { useState, useEffect, useCallback, useRef } from "react";
 // ─── SUPABASE ────────────────────────────────────────────────────────────────
 const SUPABASE_URL = "https://cypnzobdkhgysrjkxgsd.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN5cG56b2Jka2hneXNyamt4Z3NkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkyMjE5OTUsImV4cCI6MjA5NDc5Nzk5NX0.QV01inaYutgwSBYZInY1Qpx2aMITOf6IDt4OMwVJndA";
-const sbH = { "apikey": SUPABASE_ANON_KEY, "Authorization": `Bearer ${SUPABASE_ANON_KEY}`, "Content-Type": "application/json", "Prefer": "return=representation" };
+const sbH = () => ({
+  "apikey": SUPABASE_ANON_KEY,
+  "Authorization": `Bearer ${window._merarToken || SUPABASE_ANON_KEY}`,
+  "Content-Type": "application/json",
+  "Prefer": "return=representation"
+});
 
 // ─── ESPECIALISTAS MERAR (COFEPRIS) ──────────────────────────────────────────
 const ESPECIALISTAS = {
@@ -93,15 +98,15 @@ const toCamel = (r, notas=[], pagos=[]) => ({
 const DB = {
   async getPatients(especialistaId) {
     const filter = especialistaId ? `&especialista_id=eq.${especialistaId}` : "";
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/patients?select=*&order=created_at.desc${filter}`, { headers: sbH });
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/patients?select=*&order=created_at.desc${filter}`, { headers: sbH() });
     if (!res.ok) throw new Error(await res.text());
     return (await res.json()).map(r => toCamel(r));
   },
   async getPatient(id) {
     const [pR, nR, pgR] = await Promise.all([
-      fetch(`${SUPABASE_URL}/rest/v1/patients?id=eq.${id}&select=*`, { headers: sbH }),
-      fetch(`${SUPABASE_URL}/rest/v1/seguimiento_notas?patient_id=eq.${id}&select=*&order=created_at.asc`, { headers: sbH }),
-      fetch(`${SUPABASE_URL}/rest/v1/pagos?patient_id=eq.${id}&select=*&order=created_at.asc`, { headers: sbH }),
+      fetch(`${SUPABASE_URL}/rest/v1/patients?id=eq.${id}&select=*`, { headers: sbH() }),
+      fetch(`${SUPABASE_URL}/rest/v1/seguimiento_notas?patient_id=eq.${id}&select=*&order=created_at.asc`, { headers: sbH() }),
+      fetch(`${SUPABASE_URL}/rest/v1/pagos?patient_id=eq.${id}&select=*&order=created_at.asc`, { headers: sbH() }),
     ]);
     const [rows, notas, pagos] = await Promise.all([pR.json(), nR.json(), pgR.json()]);
     if (!rows.length) throw new Error("No encontrado");
@@ -112,11 +117,11 @@ const DB = {
   },
   async savePatient(p) {
     const payload = toSnake(p);
-    const chk = await fetch(`${SUPABASE_URL}/rest/v1/patients?id=eq.${p.id}&select=id`, { headers: sbH });
+    const chk = await fetch(`${SUPABASE_URL}/rest/v1/patients?id=eq.${p.id}&select=id`, { headers: sbH() });
     const exists = (await chk.json()).length > 0;
     const res = exists
-      ? await fetch(`${SUPABASE_URL}/rest/v1/patients?id=eq.${p.id}`, { method: "PATCH", headers: sbH, body: JSON.stringify(payload) })
-      : await fetch(`${SUPABASE_URL}/rest/v1/patients`, { method: "POST", headers: sbH, body: JSON.stringify(payload) });
+      ? await fetch(`${SUPABASE_URL}/rest/v1/patients?id=eq.${p.id}`, { method: "PATCH", headers: sbH(), body: JSON.stringify(payload) })
+      : await fetch(`${SUPABASE_URL}/rest/v1/patients`, { method: "POST", headers: sbH(), body: JSON.stringify(payload) });
     if (!res.ok) throw new Error(await res.text());
     return (await res.json())[0];
   },
@@ -126,7 +131,7 @@ const DB = {
   },
   async addNota(patientId, text, author, firmaData) {
     const res = await fetch(`${SUPABASE_URL}/rest/v1/seguimiento_notas`, {
-      method: "POST", headers: sbH,
+      method: "POST", headers: sbH(),
       body: JSON.stringify({ patient_id: patientId, text, author, firma_data: firmaData||null }),
     });
     if (!res.ok) throw new Error(await res.text());
@@ -134,7 +139,7 @@ const DB = {
   },
   async addPago(patientId, monto, concepto, metodo, firmaData) {
     const res = await fetch(`${SUPABASE_URL}/rest/v1/pagos`, {
-      method: "POST", headers: sbH,
+      method: "POST", headers: sbH(),
       body: JSON.stringify({ patient_id: patientId, monto: parseFloat(monto), concepto, metodo, firma_data: firmaData||null }),
     });
     if (!res.ok) throw new Error(await res.text());
@@ -350,40 +355,71 @@ const Toast = ({ msg, type="success" }) => (
   </div>
 );
 
-// ─── LOGIN ────────────────────────────────────────────────────────────────────
+// ─── LOGIN con Supabase Auth ──────────────────────────────────────────────────
 const Login = ({ onLogin, LOGO_WHITE }) => {
-  const [selected, setSelected] = useState(null);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  // Map email to especialista
+  const EMAIL_MAP = {
+    "carlos@merardental.com": "carlos",
+    "ahtzari@merardental.com": "ahtzari",
+  };
+
+  const handleLogin = async () => {
+    if (!email || !password) { setError("Ingresa correo y contraseña"); return; }
+    setLoading(true); setError("");
+    try {
+      const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
+        method: "POST",
+        headers: { "apikey": SUPABASE_ANON_KEY, "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(data.error_description || "Credenciales incorrectas"); return; }
+      // Store token for authenticated requests
+      window._merarToken = data.access_token;
+      const espId = EMAIL_MAP[email.toLowerCase()];
+      if (!espId) { setError("Usuario no reconocido"); return; }
+      onLogin(espId);
+    } catch(e) { setError("Error de conexión"); }
+    finally { setLoading(false); }
+  };
+
   return (
     <div style={{minHeight:"100vh",background:C.graphiteDk,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
-      <div style={{width:"100%",maxWidth:420}}>
+      <div style={{width:"100%",maxWidth:400}}>
         <div style={{textAlign:"center",marginBottom:40}}>
           <img src={LOGO_WHITE} alt="MERAR" style={{height:48,width:"auto",marginBottom:20}}/>
           <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:28,fontWeight:400,color:C.white}}>Sistema Clínico</div>
-          <div style={{fontSize:13,color:"rgba(255,255,255,.4)",marginTop:6}}>Selecciona tu perfil para continuar</div>
+          <div style={{fontSize:13,color:"rgba(255,255,255,.4)",marginTop:6}}>Acceso exclusivo para especialistas MERAR</div>
         </div>
-        <div style={{display:"flex",flexDirection:"column",gap:14}}>
-          {Object.values(ESPECIALISTAS).map(esp=>(
-            <div key={esp.id} onClick={()=>setSelected(esp.id)}
-              style={{background:selected===esp.id?"rgba(255,255,255,.1)":"rgba(255,255,255,.04)",border:`1px solid ${selected===esp.id?C.gold:"rgba(255,255,255,.08)"}`,borderRadius:14,padding:"20px 24px",cursor:"pointer",transition:"all .2s",display:"flex",alignItems:"center",gap:16}}>
-              <div style={{width:52,height:52,borderRadius:"50%",background:esp.color,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Cormorant Garamond',serif",fontSize:20,fontWeight:600,color:C.white,flexShrink:0}}>{esp.initials}</div>
-              <div style={{flex:1}}>
-                <div style={{fontWeight:600,fontSize:15,color:C.white}}>{esp.nombre}</div>
-                <div style={{fontSize:12,color:"rgba(255,255,255,.45)",marginTop:3}}>{esp.rol}</div>
-                <div style={{fontSize:10,color:"rgba(255,255,255,.3)",marginTop:4}}>
-                  Cédula Prof.: {esp.cedula_prof}
-                  {esp.cedula_esp && ` · Esp.: ${esp.cedula_esp}`}
-                </div>
-              </div>
-              {selected===esp.id && <Icon name="check" size={20} color={C.gold}/>}
-            </div>
-          ))}
+        <div style={{display:"flex",flexDirection:"column",gap:12}}>
+          <div style={{display:"flex",flexDirection:"column",gap:5}}>
+            <label style={{fontSize:11,fontWeight:600,color:"rgba(255,255,255,.5)",textTransform:"uppercase",letterSpacing:.6}}>Correo electrónico</label>
+            <input type="email" value={email} onChange={e=>setEmail(e.target.value)}
+              placeholder="tu@merardental.com"
+              onKeyDown={e=>e.key==="Enter"&&handleLogin()}
+              style={{padding:"11px 14px",borderRadius:10,border:`1px solid ${error?"#EF4444":"rgba(255,255,255,.12)"}`,background:"rgba(255,255,255,.06)",color:C.white,fontSize:14,outline:"none",fontFamily:"inherit"}}/>
+          </div>
+          <div style={{display:"flex",flexDirection:"column",gap:5}}>
+            <label style={{fontSize:11,fontWeight:600,color:"rgba(255,255,255,.5)",textTransform:"uppercase",letterSpacing:.6}}>Contraseña</label>
+            <input type="password" value={password} onChange={e=>setPassword(e.target.value)}
+              placeholder="••••••••"
+              onKeyDown={e=>e.key==="Enter"&&handleLogin()}
+              style={{padding:"11px 14px",borderRadius:10,border:`1px solid ${error?"#EF4444":"rgba(255,255,255,.12)"}`,background:"rgba(255,255,255,.06)",color:C.white,fontSize:14,outline:"none",fontFamily:"inherit"}}/>
+          </div>
+          {error && <div style={{fontSize:12,color:"#EF4444",background:"rgba(239,68,68,.1)",padding:"8px 12px",borderRadius:8,border:"1px solid rgba(239,68,68,.3)"}}>{error}</div>}
+          <button onClick={handleLogin} disabled={loading}
+            style={{marginTop:8,padding:"13px",borderRadius:10,border:"none",background:loading?"rgba(255,255,255,.1)":C.gold,color:C.white,fontSize:15,fontWeight:600,cursor:loading?"wait":"pointer",transition:"all .2s",display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+            {loading ? <><span className="spin-anim" style={{display:"inline-block",width:16,height:16,border:"2px solid rgba(255,255,255,.3)",borderTopColor:"white",borderRadius:"50%"}}/> Verificando...</> : "Ingresar →"}
+          </button>
         </div>
-        <button onClick={()=>selected&&onLogin(selected)} disabled={!selected}
-          style={{width:"100%",marginTop:24,padding:"14px",borderRadius:10,border:"none",background:selected?C.gold:"rgba(255,255,255,.1)",color:selected?C.white:"rgba(255,255,255,.3)",fontSize:15,fontWeight:600,cursor:selected?"pointer":"default",transition:"all .2s"}}>
-          Ingresar al sistema →
-        </button>
-        <div style={{textAlign:"center",marginTop:20,fontSize:11,color:"rgba(255,255,255,.2)",lineHeight:1.6}}>
-          NOM-013-SSA2-2015 · NOM-004-SSA3-2012<br/>COFEPRIS · MERAR Dental Group
+        <div style={{textAlign:"center",marginTop:28,fontSize:11,color:"rgba(255,255,255,.2)",lineHeight:1.6}}>
+          NOM-013-SSA2-2015 · NOM-004-SSA3-2012<br/>COFEPRIS · MERAR Dental Group<br/>
+          <span style={{color:"rgba(255,255,255,.1)"}}>merardental.com</span>
         </div>
       </div>
     </div>
